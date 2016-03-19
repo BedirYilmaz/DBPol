@@ -14,8 +14,6 @@
         android:layout_height="wrap_content"
         android:layout_alignParentLeft="true"
         android:layout_alignParentTop="true"
-        android:divider="#666"
-        android:background="#333"
         >
     </ListView>
 

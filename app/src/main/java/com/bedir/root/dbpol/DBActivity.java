@@ -24,39 +24,63 @@ public class DBActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_db);
 
-        DBPolHelper db = new DBPolHelper(this);
+        final DBPolHelper db = new DBPolHelper(this);
 
         db.addPlate(new Plate("43 ADSF 23", "Wei Meng Lee"));
         db.addPlate(new Plate("12 QEWR 993", "Bill Phillips and Brian Hardy"));
         db.addPlate(new Plate("06 URNU 324", "Wallace Jackson"));
 
         final List<Plate> plateList = db.getAllPlates();
-        ListView l = (ListView) findViewById(R.id.listView1);
+        final ListView l = (ListView) findViewById(R.id.listView1);
 
-        ArrayAdapter<Plate> plateAdapter = new ArrayAdapter<Plate>(this,R.layout.list_item,R.id.list_text,plateList);
+        final ArrayAdapter<Plate> plateAdapter = new ArrayAdapter<Plate>(this,R.layout.list_item,R.id.list_text,plateList);
 
         l.setAdapter(plateAdapter);
         l.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+        Runnable run = new Runnable() {
+                public void run() {
+                    //reload content
+                    plateList.clear();
+                    plateList.addAll(db.getAllPlates());
+                    plateAdapter.notifyDataSetChanged();
+                    l.invalidateViews();
+                    l.refreshDrawableState();
+                }
+            };
 
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int position,
-                                    long id) {
+        @Override
+        public void onItemClick(AdapterView<?> parent, View view, int position,
+                                long id) {
 
-                AlertDialog.Builder diyalogOlusturucu =
-                        new AlertDialog.Builder(DBActivity.this);
-                Plate selected = plateList.get(position);
-                diyalogOlusturucu.setMessage(selected.getPlate()+" "+selected.getRecord())
-                        .setCancelable(false)
-                        .setPositiveButton(getString(R.string.ok_button), new DialogInterface.OnClickListener() {
-                            @Override
-                            public void onClick(DialogInterface dialog, int which) {
-                                dialog.dismiss();
-                            }
-                        });
-                diyalogOlusturucu.create().show();
+            AlertDialog.Builder dialogBuilder =
+                    new AlertDialog.Builder(DBActivity.this);
+            final Plate selected = plateList.get(position);
+            dialogBuilder.setMessage(selected.getPlate()+" "+selected.getRecord())
+                    .setCancelable(false)
+                    .setPositiveButton(getString(R.string.ok_button), new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            dialog.dismiss();
+                        }
+                    }).setNegativeButton(getString(R.string.erase_button), new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            // TODO Deletion code
+                            db.deletePlate(selected);
+                            runOnUiThread(run);
+                            dialog.dismiss();
+                        }
+            }).setNeutralButton(getString(R.string.update_button), new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    // TODO Update page code
+                    dialog.dismiss();
+                }
+                    });
+            dialogBuilder.create().show();
 
-            }
-        });
+        }
+    });
 
     }
 
@@ -69,15 +93,9 @@ public class DBActivity extends AppCompatActivity {
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        // Handle action bar item clicks here. The action bar will
-        // automatically handle clicks on the Home/Up button, so long
-        // as you specify a parent activity in AndroidManifest.xml.
         int id = item.getItemId();
 
-        //noinspection SimplifiableIfStatement
-        if (id == R.id.action_settings) {
-            return true;
-        }
+        //noinspection SimplifiableIfStatemen
 
         return super.onOptionsItemSelected(item);
     }
