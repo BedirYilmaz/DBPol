@@ -6,6 +6,7 @@ package com.bedir.root.dbpol;
 import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
+import android.database.SQLException;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 import android.util.Log;
@@ -13,73 +14,127 @@ import android.util.Log;
 import java.util.LinkedList;
 import java.util.List;
 
-public class DBPolHelper extends SQLiteOpenHelper {
+public class DBPolHelper {
 
     // Database Version
     private static final int DATABASE_VERSION = 1;
     // Database Name
     private static final String DATABASE_NAME = "PolDB";
+    private static final String TABLE_PLATES = "PLATES";
+    private static final String FTS_VIRTUAL_TABLE = "PlateInfo";
+    private static final String KEY_ID = "id";
+
+
+    public static final String KEY_ROWID = "rowid";
     private static final String KEY_PLATE = "plate";
     private static final String KEY_RECORD = "record";
-    private static final String TABLE_PLATES = "PLATES";
-    private static final String KEY_ID = "id";
+    public static final String KEY_SEARCH = "searchData";
+
+    private static final String TAG = "CustomersDbAdapter";
+    private DatabaseHelper mDbHelper;
+    private SQLiteDatabase mDb;
+
+    private final Context mCtx;
+
+    //Create a FTS3 Virtual Table for fast searches
+    private static final String DATABASE_CREATE =
+            "CREATE VIRTUAL TABLE " + FTS_VIRTUAL_TABLE + " USING fts3(" +
+                    KEY_PLATE + "," +
+                    KEY_RECORD + "," +
+                    KEY_SEARCH + "," +
+                    " UNIQUE (" + KEY_PLATE + "));";
+
+
+    private static class DatabaseHelper extends SQLiteOpenHelper {
+
+        DatabaseHelper(Context context) {
+            super(context, DATABASE_NAME, null, DATABASE_VERSION);
+        }
+
+
+        @Override
+        public void onCreate(SQLiteDatabase db) {
+            Log.w(TAG, DATABASE_CREATE);
+            db.execSQL(DATABASE_CREATE);
+        }
+
+        @Override
+        public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+            Log.w(TAG, "Upgrading database from version " + oldVersion + " to "
+                    + newVersion + ", which will destroy all old data");
+            db.execSQL("DROP TABLE IF EXISTS " + FTS_VIRTUAL_TABLE);
+            onCreate(db);
+        }
+    }
 
     private static final String[] COLUMNS = {KEY_ID,KEY_PLATE,KEY_RECORD};
 
-    public DBPolHelper(Context context) {
-        super(context, DATABASE_NAME, null, DATABASE_VERSION);
+    public DBPolHelper(Context ctx) {
+        this.mCtx = ctx;
+        mDbHelper = new DatabaseHelper(mCtx);
+        mDb = mDbHelper.getWritableDatabase();
     }
 
-    @Override
-    public void onCreate(SQLiteDatabase db) {
-        // SQL statement to create Plate table
-        String CREATE_PLATE_TABLE = "CREATE TABLE Plates ( " +
-                "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
-                "plate TEXT, "+
-                "record TEXT )";
+    public long createPlate(String plate, String record) {
 
-        // create Plates table
-        db.execSQL(CREATE_PLATE_TABLE);
+        ContentValues initialValues = new ContentValues();
+        String searchValue = plate + " " + record ;
+        initialValues.put(KEY_PLATE, plate);
+        initialValues.put(KEY_RECORD, record);
+        initialValues.put(KEY_SEARCH, searchValue);
+
+        return mDb.insert(FTS_VIRTUAL_TABLE, null, initialValues);
     }
 
-    @Override
-    public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        // Drop older Plates table if existed
-        db.execSQL("DROP TABLE IF EXISTS PLATES");
+    public List<Plate> searchPlate(String inputText) throws SQLException {
+        Log.w(TAG, inputText);
 
-        // create fresh Plates table
-        this.onCreate(db);
+        List<Plate> plates = new LinkedList<Plate>();
+
+        String query = "SELECT docid as _id," +
+                KEY_PLATE + "," +
+                KEY_RECORD +
+                " from " + FTS_VIRTUAL_TABLE +
+                " where " +  KEY_SEARCH + " MATCH '" + inputText + "';";
+        Log.w(TAG, query);
+        Cursor mCursor = mDb.rawQuery(query,null);
+
+        if (mCursor != null) {
+            mCursor.moveToFirst();
+        }
+
+        Plate plate = null;
+        if (mCursor.moveToFirst()) {
+            do {
+                plate = new Plate();
+                plate.setId(Integer.parseInt(mCursor.getString(0)));
+                plate.setPlate(mCursor.getString(1));
+                plate.setRecord(mCursor.getString(2));
+
+                plates.add(plate);
+            } while (mCursor.moveToNext());
+        }
+
+        Log.d("searchPlate()", plates.toString());
+
+        return plates;
+
     }
 
-    public void addPlate(Plate Plate){
-        //for logging
-        Log.d("addPlate", Plate.toString());
+    public boolean deleteAllPlates() {
 
-        // 1. get reference to writable DB
-        SQLiteDatabase db = this.getWritableDatabase();
+        int doneDelete = 0;
+        doneDelete = mDb.delete(FTS_VIRTUAL_TABLE, null, null);
+        Log.w(TAG, Integer.toString(doneDelete));
+        return doneDelete > 0;
 
-        // 2. create ContentValues to add key "column"/value
-        ContentValues values = new ContentValues();
-        values.put(KEY_PLATE, Plate.getPlate()); // get title
-        values.put(KEY_RECORD, Plate.getRecord()); // get author
-
-        // 3. insert
-        db.insert(TABLE_PLATES, // table
-                null, //nullColumnHack
-                values); // key/value -> keys = column names/ values = column values
-
-        // 4. close
-        db.close();
     }
 
     public Plate getPlate(int id){
 
-        // 1. get reference to readable DB
-        SQLiteDatabase db = this.getReadableDatabase();
-
         // 2. build query
         Cursor cursor =
-                db.query(TABLE_PLATES, // a. table
+                mDb.query(FTS_VIRTUAL_TABLE, // a. table
                         COLUMNS, // b. column names
                         " id = ?", // c. selections
                         new String[] { String.valueOf(id) }, // d. selections args
@@ -105,35 +160,7 @@ public class DBPolHelper extends SQLiteOpenHelper {
         return plate;
     }
 
-    public List<Plate> getAllPlates() {
-        List<Plate> plates = new LinkedList<Plate>();
-
-        String query = "SELECT  * FROM " + TABLE_PLATES;
-
-        SQLiteDatabase db = this.getWritableDatabase();
-        Cursor cursor = db.rawQuery(query, null);
-
-        Plate plate = null;
-        if (cursor.moveToFirst()) {
-            do {
-                plate = new Plate();
-                plate.setId(Integer.parseInt(cursor.getString(0)));
-                plate.setPlate(cursor.getString(1));
-                plate.setRecord(cursor.getString(2));
-
-                plates.add(plate);
-            } while (cursor.moveToNext());
-        }
-
-        Log.d("getAllPlates()", plates.toString());
-
-        return plates;
-    }
-
     public int updatePlate(Plate plate) {
-
-        // 1. get reference to writable DB
-        SQLiteDatabase db = this.getWritableDatabase();
 
         // 2. create ContentValues to add key "column"/value
         ContentValues values = new ContentValues();
@@ -141,13 +168,13 @@ public class DBPolHelper extends SQLiteOpenHelper {
         values.put("author", plate.getRecord()); // get author
 
         // 3. updating row
-        int i = db.update(TABLE_PLATES, //table
+        int i = mDb.update(FTS_VIRTUAL_TABLE, //table
                 values, // column/value
                 KEY_ID+" = ?", // selections
                 new String[] { String.valueOf(plate.getId()) }); //selection args
 
         // 4. close
-        db.close();
+        mDb.close();
 
         return i;
 
@@ -155,16 +182,10 @@ public class DBPolHelper extends SQLiteOpenHelper {
 
     public void deletePlate(Plate plate) {
 
-        // 1. get reference to writable DB
-        SQLiteDatabase db = this.getWritableDatabase();
-
         // 2. delete
-        db.delete(TABLE_PLATES, //table name
-                KEY_ID + " = ?",  // selections
+        mDb.delete(FTS_VIRTUAL_TABLE, //table name
+                KEY_ROWID + " = ?",  // selections
                 new String[]{String.valueOf(plate.getId())}); //selections args
-
-        // 3. close
-        db.close();
 
         //log
         Log.d("deleteBook", plate.toString());
