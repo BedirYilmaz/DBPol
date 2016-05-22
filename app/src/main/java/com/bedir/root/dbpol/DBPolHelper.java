@@ -26,8 +26,8 @@ public class DBPolHelper {
 
 
     public static final String KEY_ROWID = "rowid";
-    private static final String KEY_PLATE = "plate";
-    private static final String KEY_RECORD = "record";
+    public static final String KEY_PLATE = "plate";
+    public static final String KEY_RECORD = "record";
     public static final String KEY_SEARCH = "searchData";
 
     private static final String TAG = "CustomersDbAdapter";
@@ -84,6 +84,24 @@ public class DBPolHelper {
         initialValues.put(KEY_SEARCH, searchValue);
 
         return mDb.insert(FTS_VIRTUAL_TABLE, null, initialValues);
+    }
+
+    public Cursor searchPlateWithCursor(String inputText)
+    {
+        Log.w(TAG, inputText);
+        String query = "SELECT docid as _id," +
+                KEY_PLATE + "," +
+                KEY_RECORD +
+                " from " + FTS_VIRTUAL_TABLE +
+                " where " +  KEY_SEARCH + " MATCH '" + inputText + "';";
+
+        Log.w(TAG, query);
+        Cursor mCursor = mDb.rawQuery(query,null);
+
+        if (mCursor != null) {
+            mCursor.moveToFirst();
+        }
+        return mCursor;
     }
 
     public List<Plate> searchPlate(String inputText) throws SQLException {
